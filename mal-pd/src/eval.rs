@@ -62,6 +62,43 @@ pub fn quasiquote(mt: MalType) -> Result<MalType> {
     }
 }
 
+pub fn is_macro_call(ast: MalType, env: &Rc<MalEnv>) -> Option<MalType> {
+    match &ast {
+        MalType::List(MalList(l)) if !l.is_empty() => match &l[0] {
+            MalType::Symbol(s) => {
+                if let Some(env) = MalEnv::find(env, &s) {
+                    if let MalType::Func(f) = env.as_ref().borrow().get(&s).unwrap() {
+                        if f.is_macro() {
+                            return Some(MalType::Func(f.clone()));
+                        }
+                    }
+                }
+                return None;
+            }
+            _ => return None,
+        },
+        _ => return None,
+    }
+}
+
+pub fn macroexpand(mut ast: MalType, env: &Rc<MalEnv>) -> Result<(bool, MalType)> {
+    let mut expanded: bool = false;
+    while let Some(MalType::Func(f)) = is_macro_call(ast.clone(), env) {
+        if let MalType::List(MalList(l)) = ast {
+            match f.call(l[1..].to_vec()) {
+                Ok(nast) => {
+                    expanded = true;
+                    ast = nast;
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+    }
+    Ok((expanded, ast))
+}
+
 pub fn eval_ast(mt: MalType, env: &Rc<MalEnv>) -> Result<MalType> {
     if let MalType::Symbol(s) = mt {
         if let Some(env) = MalEnv::find(env, &s) {
@@ -99,6 +136,20 @@ pub fn eval(mut mt: MalType, mut env: Rc<MalEnv>) -> Result<MalType> {
             if l.len() == 0 {
                 return Ok(mt);
             }
+            match macroexpand(mt.clone(), &env) {
+                Ok((true, ast)) => match ast {
+                    MalType::List(_) => {
+                        mt = ast;
+                        continue;
+                    }
+                    _ => {
+                        return eval_ast(ast, &env);
+                    }
+                },
+                Err(e) => return Err(e),
+                _ => {}
+            };
+
             match &l[0] {
                 MalType::Symbol(ms) if ms.strcmp("def!") => {
                     let k = &l[1];
@@ -191,6 +242,27 @@ pub fn eval(mut mt: MalType, mut env: Rc<MalEnv>) -> Result<MalType> {
                         env = e.clone();
                     }
                     continue;
+                }
+                MalType::Symbol(ms) if ms.strcmp("defmacro!") => {
+                    let k = &l[1];
+                    let v = eval(l[2].clone(), env.clone())?;
+                    match v {
+                        MalType::Func(mut f) => {
+                            f.set_macro();
+                            let nv = MalType::Func(f);
+                            env.set(k, nv.clone())?;
+                            return Ok(nv);
+                        }
+                        _ => {
+                            return Err("expected function in defmacro! definition"
+                                .to_string()
+                                .into());
+                        }
+                    };
+                }
+                MalType::Symbol(ms) if ms.strcmp("macroexpand") => {
+                    let ast = &l[1];
+                    return macroexpand(ast.clone(), &env).map(|(_, ast)| ast);
                 }
                 _ => {
                     if let MalType::List(MalList(l)) = eval_ast(mt, &env)? {

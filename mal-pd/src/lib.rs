@@ -344,5 +344,54 @@ pub fn make_env() -> std::rc::Rc<MalEnv> {
             },
         ))),
     );
+    env.insert(
+        MalSymbol::new("nth"),
+        MalType::Func(Box::new(MalFunc::from_closure(
+            |args: Vec<MalType>| match &args[0] {
+                MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => match &args[1] {
+                    MalType::Int(ref i) => {
+                        let idx = *i as usize;
+                        if idx >= l.len() {
+                            return Err(format!("nth: index out of range").into());
+                        }
+                        return Ok(l[idx].clone());
+                    }
+                    _ => Err(format!("expected index as second arg").into()),
+                },
+                _ => Err(format!("expected list or vec as arguments").into()),
+            },
+        ))),
+    );
+    env.insert(
+        MalSymbol::new("first"),
+        MalType::Func(Box::new(MalFunc::from_closure(
+            |args: Vec<MalType>| match &args[0] {
+                MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => {
+                    if l.is_empty() {
+                        return Ok(MalType::Nil);
+                    }
+                    return Ok(l[0].clone());
+                }
+                MalType::Nil => Ok(MalType::Nil),
+                _ => Err(format!("expected list or vec as arguments").into()),
+            },
+        ))),
+    );
+    env.insert(
+        MalSymbol::new("rest"),
+        MalType::Func(Box::new(MalFunc::from_closure(
+            |args: Vec<MalType>| match &args[0] {
+                MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => {
+                    if l.is_empty() {
+                        return Ok(MalType::List(MalList::new(vec![])));
+                    }
+                    return Ok(MalType::List(MalList::new(l[1..].to_vec())));
+                }
+                MalType::Nil => Ok(MalType::List(MalList::new(vec![]))),
+                _ => Err(format!("expected list or vec as arguments").into()),
+            },
+        ))),
+    );
+
     return env;
 }

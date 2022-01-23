@@ -42,3 +42,7 @@ path = "src/step6_file.rs"
 [[bin]]
 name = "step7_quote"
 path = "src/step7_quote.rs"
+
+[[bin]]
+name = "step8_macros"
+path = "src/step8_macros.rs"

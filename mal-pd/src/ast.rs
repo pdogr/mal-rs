@@ -110,6 +110,7 @@ pub struct MalFunc {
     body: MalType,
     closure: Option<fn(Vec<MalType>) -> Result<MalType>>,
     env: Option<Rc<MalEnv>>,
+    is_macro: bool,
 }
 
 impl MalFunc {
@@ -119,6 +120,7 @@ impl MalFunc {
             body: MalType::Nil,
             closure: Some(closure),
             env: None,
+            is_macro: false,
         }
     }
 
@@ -128,6 +130,7 @@ impl MalFunc {
             body,
             closure: None,
             env: Some(env.clone()),
+            is_macro: false,
         }
     }
 
@@ -138,5 +141,13 @@ impl MalFunc {
             let env = MalEnv::from_binds(self.args.clone(), exprs, &self.env.clone().unwrap());
             return eval(self.body.clone(), env);
         }
+    }
+
+    pub fn set_macro(&mut self) {
+        self.is_macro = true;
+    }
+
+    pub fn is_macro(&self) -> bool {
+        self.is_macro
     }
 }
