@@ -1,4 +1,3 @@
-#![feature(box_into_inner)]
 extern crate rustyline;
 use std::{cell::RefCell, rc::Rc};
 
@@ -25,7 +24,7 @@ type Result<R> = std::result::Result<R, Box<dyn std::error::Error>>;
 macro_rules! binary_op {
     ($map: ident, $sym: literal, $op: tt) => {{
         $map.insert(
-            MalSymbol::new($sym),
+            symbol!($sym),
             MalType::Func(Box::new(MalFunc::from_closure(|args: Vec<MalType>| {
                 let a1 = &args[0];
                 let a2 = &args[1];
@@ -42,7 +41,7 @@ macro_rules! binary_op {
 macro_rules! binary_cmp {
     ($map: ident, $sym: literal, $op: tt) => {{
         $map.insert(
-            MalSymbol::new($sym),
+            symbol!($sym),
             MalType::Func(Box::new(MalFunc::from_closure(|args: Vec<MalType>| {
                 let a1 = &args[0];
                 let a2 = &args[1];
@@ -53,6 +52,126 @@ macro_rules! binary_cmp {
             }))),
         );
     }};
+}
+
+#[allow(unused_macros)]
+macro_rules! symbol {
+    ($sym: literal) => {{
+        MalSymbol::new($sym)
+    }};
+}
+
+#[allow(unused_macros)]
+macro_rules! mal_func {
+    ($f: expr) => {{
+        MalType::Func(Box::new(MalFunc::from_closure($f)))
+    }};
+}
+
+#[allow(unused_macros)]
+macro_rules! mal_str {
+    ($s: expr) => {{
+        MalType::Str($s)
+    }};
+}
+
+#[allow(unused_macros)]
+macro_rules! mal_list {
+    ($s: expr) => {{
+        MalType::List(MalList::new($s))
+    }};
+}
+
+#[allow(unused_macros)]
+macro_rules! mal_vec {
+    ($s: expr) => {{
+        MalType::Vector(MalVec::new($s))
+    }};
+}
+
+#[allow(unused_macros)]
+macro_rules! mal_bool {
+    ($b: expr) => {{
+        MalType::Bool($b)
+    }};
+}
+
+#[allow(unused_macros)]
+macro_rules! mal_int {
+    ($i: expr) => {{
+        MalType::Int($i)
+    }};
+}
+
+#[allow(unused_macros)]
+macro_rules! mal_atom {
+    ($a: expr) => {{
+        MalType::Atom(Rc::new(RefCell::new($a)))
+    }};
+}
+
+#[inline]
+fn gil(mt: &MalType) -> Result<&Vec<MalType>> {
+    match mt {
+        MalType::List(MalList(l)) => Ok(l),
+        _ => Err(format!("expected list").into()),
+    }
+}
+
+#[inline]
+fn giv(mt: &MalType) -> Result<&Vec<MalType>> {
+    match mt {
+        MalType::Vector(MalVec(l)) => Ok(l),
+        _ => Err(format!("expected vec").into()),
+    }
+}
+
+#[inline]
+fn gilv(mt: &MalType) -> Result<&Vec<MalType>> {
+    match mt {
+        MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => Ok(l),
+        _ => Err(format!("expected list or vec").into()),
+    }
+}
+
+#[inline]
+fn gis(mt: &MalType) -> Result<&Rc<str>> {
+    match mt {
+        MalType::Str(s) => Ok(s),
+        _ => Err(format!("expected str").into()),
+    }
+}
+
+#[inline]
+fn gia(mt: &MalType) -> Result<&Rc<RefCell<MalType>>> {
+    match mt {
+        MalType::Atom(a) => Ok(a),
+        _ => Err(format!("expected atom").into()),
+    }
+}
+
+#[inline]
+fn gii(mt: &MalType) -> Result<i64> {
+    match mt {
+        MalType::Int(i) => Ok(*i),
+        _ => Err(format!("expected atom").into()),
+    }
+}
+
+#[inline]
+fn gif(mt: &MalType) -> Result<&MalFunc> {
+    match mt {
+        MalType::Func(f) => Ok(f),
+        _ => Err(format!("expected atom").into()),
+    }
+}
+
+#[inline]
+fn exists(v: &Vec<MalType>, i: usize) -> Result<()> {
+    if i < v.len() {
+        return Ok(());
+    }
+    Err(format!("need atleast {} arguments", i + 1).into())
 }
 
 pub fn print(mt: &MalType, print_readonly: bool) -> String {
@@ -133,30 +252,30 @@ pub fn make_env() -> std::rc::Rc<MalEnv> {
     binary_op!(env, "*", *);
     binary_op!(env, "/", /);
     env.insert(
-        MalSymbol::new("pr-str"),
-        MalType::Func(Box::new(MalFunc::from_closure(|args: Vec<MalType>| {
+        symbol!("pr-str"),
+        mal_func!(|args| {
             let result = args
                 .iter()
                 .map(|arg| print(arg, true))
                 .collect::<Vec<_>>()
                 .join("");
-            Ok(MalType::Str(result.into()))
-        }))),
+            Ok(mal_str!(result.into()))
+        }),
     );
     env.insert(
-        MalSymbol::new("str"),
-        MalType::Func(Box::new(MalFunc::from_closure(|args: Vec<MalType>| {
+        symbol!("str"),
+        mal_func!(|args| {
             let result = args
                 .iter()
                 .map(|arg| print(arg, false))
                 .collect::<Vec<_>>()
                 .join("");
-            Ok(MalType::Str(result.into()))
-        }))),
+            Ok(mal_str!(result.into()))
+        }),
     );
     env.insert(
-        MalSymbol::new("prn"),
-        MalType::Func(Box::new(MalFunc::from_closure(|args: Vec<MalType>| {
+        symbol!("prn"),
+        mal_func!(|args| {
             let result = args
                 .iter()
                 .map(|arg| print(arg, true))
@@ -164,11 +283,11 @@ pub fn make_env() -> std::rc::Rc<MalEnv> {
                 .join(" ");
             println!("{}", result);
             Ok(MalType::Nil)
-        }))),
+        }),
     );
     env.insert(
-        MalSymbol::new("println"),
-        MalType::Func(Box::new(MalFunc::from_closure(|args: Vec<MalType>| {
+        symbol!("println"),
+        mal_func!(|args| {
             let result = args
                 .iter()
                 .map(|arg| print(arg, false))
@@ -176,196 +295,144 @@ pub fn make_env() -> std::rc::Rc<MalEnv> {
                 .join(" ");
             println!("{}", result);
             Ok(MalType::Nil)
-        }))),
+        }),
+    );
+    env.insert(symbol!("list"), mal_func!(|args| Ok(mal_list!(args))));
+    env.insert(
+        symbol!("list?"),
+        mal_func!(
+            |args| gil(&args[0]).map_or_else(|_| Ok(mal_bool!(false)), |_| Ok(mal_bool!(true)))
+        ),
     );
     env.insert(
-        MalSymbol::new("list"),
-        MalType::Func(Box::new(MalFunc::from_closure(|args: Vec<MalType>| {
-            Ok(MalType::List(MalList::new(args)))
-        }))),
-    );
-    env.insert(
-        MalSymbol::new("list?"),
-        MalType::Func(Box::new(MalFunc::from_closure(|args: Vec<MalType>| {
-            if let MalType::List(_) = &args[0] {
-                return Ok(MalType::Bool(true));
+        symbol!("empty?"),
+        mal_func!(|args| gilv(&args[0]).map_or_else(
+            |_| Ok(mal_bool!(false)),
+            |l| {
+                if l.len() == 0 {
+                    return Ok(mal_bool!(true));
+                }
+                return Ok(mal_bool!(false));
             }
-            return Ok(MalType::Bool(false));
-        }))),
+        )),
     );
     env.insert(
-        MalSymbol::new("empty?"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0] {
-                MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => {
-                    if l.len() == 0 {
-                        return Ok(MalType::Bool(true));
-                    }
-                    return Ok(MalType::Bool(false));
-                }
-                _ => Ok(MalType::Bool(false)),
-            },
-        ))),
+        symbol!("count"),
+        mal_func!(|args| gilv(&args[0])
+            .map_or_else(|_| Ok(mal_int!(0)), |l| Ok(mal_int!(l.len() as i64)))),
     );
     env.insert(
-        MalSymbol::new("count"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0] {
-                MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => {
-                    Ok(MalType::Int(l.len() as i64))
-                }
-                _ => Ok(MalType::Int(0)),
-            },
-        ))),
-    );
-    env.insert(
-        MalSymbol::new("="),
-        MalType::Func(Box::new(MalFunc::from_closure(|args: Vec<MalType>| {
-            Ok(MalType::Bool(args[0] == args[1]))
-        }))),
+        symbol!("="),
+        mal_func!(|args| Ok(mal_bool!(args[0] == args[1]))),
     );
     binary_cmp!(env, "<", <);
     binary_cmp!(env, "<=", <=);
     binary_cmp!(env, ">", >);
     binary_cmp!(env, ">=", >=);
     env.insert(
-        MalSymbol::new("read-string"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0] {
-                MalType::Str(s) => read_str(s),
-                _ => Err(format!("expected string in read-string").into()),
-            },
-        ))),
+        symbol!("read-string"),
+        mal_func!(|args| {
+            let s = gis(&args[0])?;
+            read_str(s)
+        }),
     );
     env.insert(
-        MalSymbol::new("slurp"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0] {
-                MalType::Str(s) => {
-                    let contents = std::fs::read_to_string(&s.as_ref())?;
-                    Ok(MalType::Str(contents.into()))
+        symbol!("slurp"),
+        mal_func!(|args| {
+            let s = gis(&args[0])?;
+            let contents = std::fs::read_to_string(&s.as_ref())?;
+            Ok(mal_str!(contents.into()))
+        }),
+    );
+    env.insert(
+        symbol!("atom"),
+        mal_func!(|args| Ok(mal_atom!(args[0].clone()))),
+    );
+    env.insert(
+        symbol!("atom?"),
+        mal_func!(
+            |args| gia(&args[0]).map_or_else(|_| Ok(mal_bool!(false)), |_| Ok(mal_bool!(true)))
+        ),
+    );
+    env.insert(
+        symbol!("deref"),
+        mal_func!(|args| {
+            let a = gia(&args[0])?;
+            Ok(a.borrow().clone())
+        }),
+    );
+    env.insert(
+        symbol!("reset!"),
+        mal_func!(|args| {
+            exists(&args, 1)?;
+            let a = gia(&args[0])?;
+            let val = args[1].clone();
+            a.replace(val.clone());
+            Ok(val)
+        }),
+    );
+    env.insert(
+        symbol!("swap!"),
+        mal_func!(|args| {
+            exists(&args, 1)?;
+            let a = gia(&args[0])?;
+            let f = gif(&args[1])?;
+            let mut func_args = vec![a.borrow().clone()];
+            func_args = func_args
+                .into_iter()
+                .chain(args[2..].to_vec().into_iter())
+                .collect();
+            let val = f.call(func_args)?;
+            a.replace(val.clone());
+            Ok(val)
+        }),
+    );
+    env.insert(
+        symbol!("cons"),
+        mal_func!(|args| {
+            exists(&args, 1)?;
+            let l = gilv(&args[1])?;
+            let mut vector = l.clone();
+            vector.insert(0, args[0].clone());
+            Ok(mal_list!(vector))
+        }),
+    );
+    env.insert(
+        symbol!("concat"),
+        mal_func!(|args| {
+            let l = args.iter().fold(Vec::new(), |mut acc, arg| {
+                let next = gilv(&arg).map_or_else(|_| None, |l| Some(l.to_vec()));
+                if let Some(elt) = next {
+                    acc.extend(elt)
                 }
-                _ => Err(format!("expected filename in slurp").into()),
-            },
-        ))),
-    );
-    env.insert(
-        MalSymbol::new("atom"),
-        MalType::Func(Box::new(MalFunc::from_closure(|args: Vec<MalType>| {
-            Ok(MalType::Atom(Rc::new(RefCell::new(args[0].clone()))))
-        }))),
-    );
-    env.insert(
-        MalSymbol::new("atom?"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0] {
-                MalType::Atom(_) => Ok(MalType::Bool(true)),
-                _ => Ok(MalType::Bool(false)),
-            },
-        ))),
-    );
-    env.insert(
-        MalSymbol::new("deref"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0] {
-                MalType::Atom(a) => Ok(a.borrow().clone()),
-                _ => Err(format!("expected atom as argument of deref").into()),
-            },
-        ))),
-    );
-    env.insert(
-        MalSymbol::new("reset!"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0].clone() {
-                MalType::Atom(a) => {
-                    let val = args[1].clone();
-                    a.replace(val.clone());
-                    Ok(val)
-                }
-                _ => Err(format!("expected atom as 1st argument of reset!").into()),
-            },
-        ))),
-    );
-    env.insert(
-        MalSymbol::new("swap!"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0].clone() {
-                MalType::Atom(a) => match args[1].clone() {
-                    MalType::Func(f) => {
-                        let mut func_args = vec![a.borrow().clone()];
-                        func_args = func_args
-                            .into_iter()
-                            .chain(args[2..].to_vec().into_iter())
-                            .collect();
-                        let val = f.call(func_args)?;
-                        a.replace(val.clone());
-                        Ok(val)
-                    }
-                    _ => Err(format!("expected func as 2nd argument of swap").into()),
-                },
-                _ => Err(format!("expected atom as 1st argument of swap").into()),
-            },
-        ))),
-    );
-    env.insert(
-        MalSymbol::new("cons"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[1] {
-                MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => {
-                    let mut vector = l.clone();
-                    vector.insert(0, args[0].clone());
-                    return Ok(MalType::List(MalList::new(vector)));
-                }
-                _ => Err(format!("expected list or vec as second argument").into()),
-            },
-        ))),
-    );
-    env.insert(
-        MalSymbol::new("concat"),
-        MalType::Func(Box::new(MalFunc::from_closure(|args: Vec<MalType>| {
-            let l = args.iter().fold(Vec::new(), |mut acc, arg| match &arg {
-                MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => {
-                    acc.extend(l.to_vec());
-                    acc
-                }
-                _ => acc,
+                acc
             });
             Ok(MalType::List(MalList(l)))
-        }))),
+        }),
     );
     env.insert(
-        MalSymbol::new("vec"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0] {
-                MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => {
-                    Ok(MalType::Vector(MalVec(l.to_vec())))
-                }
-                _ => Err(format!("expected list or vec as arguments").into()),
-            },
-        ))),
+        symbol!("vec"),
+        mal_func!(|args| {
+            let l = gilv(&args[0])?;
+            Ok(mal_vec!(l.to_vec()))
+        }),
     );
     env.insert(
-        MalSymbol::new("nth"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0] {
-                MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => match &args[1] {
-                    MalType::Int(ref i) => {
-                        let idx = *i as usize;
-                        if idx >= l.len() {
-                            return Err(format!("nth: index out of range").into());
-                        }
-                        return Ok(l[idx].clone());
-                    }
-                    _ => Err(format!("expected index as second arg").into()),
-                },
-                _ => Err(format!("expected list or vec as arguments").into()),
-            },
-        ))),
+        symbol!("nth"),
+        mal_func!(|args| {
+            exists(&args, 1)?;
+            let l = gilv(&args[0])?;
+            let idx = gii(&args[1])? as usize;
+            if idx >= l.len() {
+                return Err(format!("nth: index out of range").into());
+            }
+            return Ok(l[idx].clone());
+        }),
     );
     env.insert(
-        MalSymbol::new("first"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0] {
+        symbol!("first"),
+        mal_func!(|args| {
+            match &args[0] {
                 MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => {
                     if l.is_empty() {
                         return Ok(MalType::Nil);
@@ -374,23 +441,21 @@ pub fn make_env() -> std::rc::Rc<MalEnv> {
                 }
                 MalType::Nil => Ok(MalType::Nil),
                 _ => Err(format!("expected list or vec as arguments").into()),
-            },
-        ))),
+            }
+        }),
     );
     env.insert(
-        MalSymbol::new("rest"),
-        MalType::Func(Box::new(MalFunc::from_closure(
-            |args: Vec<MalType>| match &args[0] {
-                MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => {
-                    if l.is_empty() {
-                        return Ok(MalType::List(MalList::new(vec![])));
-                    }
-                    return Ok(MalType::List(MalList::new(l[1..].to_vec())));
+        symbol!("rest"),
+        mal_func!(|args| match &args[0] {
+            MalType::List(MalList(l)) | MalType::Vector(MalVec(l)) => {
+                if l.is_empty() {
+                    return Ok(MalType::List(MalList::new(vec![])));
                 }
-                MalType::Nil => Ok(MalType::List(MalList::new(vec![]))),
-                _ => Err(format!("expected list or vec as arguments").into()),
-            },
-        ))),
+                return Ok(MalType::List(MalList::new(l[1..].to_vec())));
+            }
+            MalType::Nil => Ok(MalType::List(MalList::new(vec![]))),
+            _ => Err(format!("expected list or vec").into()),
+        }),
     );
 
     return env;
